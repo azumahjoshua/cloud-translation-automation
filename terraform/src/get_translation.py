@@ -11,7 +11,7 @@ s3_client = boto3.client("s3")
 
 # Environment Variables
 OUTPUT_BUCKET = os.environ.get("TRANSLATION_OUTPUT_BUCKET_NAME")
-
+INPUT_BUCKET = os.environ.get("TRANSLATION_INPUT_BUCKET_NAME")
 
 def handler(event, context):
     """Handles direct text translation and file uploads, returning results in JSON format."""
@@ -20,18 +20,21 @@ def handler(event, context):
 
         start_time = time.perf_counter()
 
-        # Decode request body
+        # Check if request is a file upload or JSON input
         request = decode_request_body(event)
 
         if not request:
             return error_response("Invalid or empty request body")
 
         if "s3_key" in request:
-            # File-based translation
+            # File-based translation (file is already in S3)
             response_data = process_uploaded_file(request["s3_key"])
         elif "text" in request and "source_language" in request and "target_language" in request:
             # Direct text translation
             response_data = process_direct_text_translation(request)
+        elif "file_data" in request:
+            # Handle raw file uploads (binary or base64 JSON)
+            response_data = process_raw_file_upload(request["file_data"])
         else:
             return error_response("Invalid request format")
 
@@ -46,16 +49,16 @@ def handler(event, context):
 
 
 def decode_request_body(event):
-    """Decodes request body from the event, handling Base64 encoding if necessary."""
+    """Decodes request body from the event, handling raw binary, Base64, and JSON."""
     try:
         if "body" not in event:
             return None
 
         if event.get("isBase64Encoded", False):
             decoded_body = base64.b64decode(event["body"]).decode("utf-8")
-        else:
-            decoded_body = event["body"]
+            return {"file_data": decoded_body}
 
+        decoded_body = event["body"]
         return json.loads(decoded_body)
 
     except (json.JSONDecodeError, UnicodeDecodeError) as e:
@@ -82,6 +85,22 @@ def process_uploaded_file(s3_key):
 
     except ClientError as e:
         return {"error": f"Failed to retrieve translated file: {e}"}
+
+
+def process_raw_file_upload(file_data):
+    """Uploads raw JSON file content to S3 and triggers translation."""
+    try:
+        # Generate a unique filename
+        s3_key = f"uploads/file_{int(time.time())}.json"
+
+        # Upload file to S3
+        s3_client.put_object(Bucket=INPUT_BUCKET, Key=s3_key, Body=file_data)
+
+        # Process the uploaded file
+        return process_uploaded_file(s3_key)
+
+    except ClientError as e:
+        return {"error": f"Failed to upload and process file: {e}"}
 
 
 def process_direct_text_translation(request):
