@@ -100,7 +100,7 @@ resource "aws_api_gateway_method" "upload_post" {
   }
 }
 
-# Integrate API Gateway with Lambda for uploads
+# Integrate API Gateway with Lambda for uploads (now handled by get_translation_lambda)
 resource "aws_api_gateway_integration" "upload_lambda_integration" {
   rest_api_id             = aws_api_gateway_rest_api.translation_api.id
   resource_id             = aws_api_gateway_resource.upload.id
@@ -108,7 +108,6 @@ resource "aws_api_gateway_integration" "upload_lambda_integration" {
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
   uri                     = aws_lambda_function.get_translation_lambda.invoke_arn
-
 }
 
 # CORS Preflight Request (OPTIONS) for /upload
@@ -164,13 +163,9 @@ resource "aws_api_gateway_deployment" "translation_api" {
   rest_api_id = aws_api_gateway_rest_api.translation_api.id
 }
 
-
 # Define API Gateway stage
 resource "aws_api_gateway_stage" "dev" {
   stage_name    = "dev"
   rest_api_id   = aws_api_gateway_rest_api.translation_api.id
   deployment_id = aws_api_gateway_deployment.translation_api.id
 }
-
-
-
